@@ -23,33 +23,65 @@ export async function POST(req) {
       return NextResponse.json({ error: 'Teks kosong.' }, { status: 400 });
     }
 
-    const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model: 'llama-3.1-8b-instant',
-        messages: [
-          { role: 'system', content: PROMPTS[mode] || PROMPTS.chat },
-          { role: 'user', content: prompt },
-        ],
-        temperature: 0.7,
-      }),
+    // Ambil semua model yang tersedia di akun Groq Anda
+    const modelsRes = await fetch('https://api.groq.com/openai/v1/models', {
+      headers: { Authorization: `Bearer ${apiKey}` },
     });
+    const modelsData = await modelsRes.json();
 
-    const data = await response.json();
-
-    if (!response.ok) {
+    if (!modelsRes.ok) {
       return NextResponse.json(
-        { error: data.error?.message || 'Gagal memproses AI.' },
+        { error: modelsData.error?.message || 'API Key Groq tidak valid.' },
         { status: 500 }
       );
     }
 
-    const result = data.choices?.[0]?.message?.content || '';
-    return NextResponse.json({ result });
+    const allIds = (modelsData.data || []).map((m) => m.id);
+    const chatCandidates = allIds.filter(
+      (id) =>
+        !id.toLowerCase().includes('whisper') &&
+        !id.toLowerCase().includes('guard') &&
+        !id.toLowerCase().includes('tts') &&
+        !id.toLowerCase().includes('embed')
+    );
+
+    if (chatCandidates.length === 0) {
+      return NextResponse.json(
+        { error: `Tidak ada model chat aktif. Daftar model: ${allIds.join(', ')}` },
+        { status: 500 }
+      );
+    }
+
+    // Coba setiap model yang tersedia di akun Anda sampai berhasil
+    let lastError = 'Gagal memproses AI.';
+    for (const modelId of chatCandidates) {
+      const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model: modelId,
+          messages: [
+            { role: 'system', content: PROMPTS[mode] || PROMPTS.chat },
+            { role: 'user', content: prompt },
+          ],
+          temperature: 0.7,
+        }),
+      });
+
+      const data = await response.json();
+      if (response.ok && data.choices?.[0]?.message?.content) {
+        return NextResponse.json({ result: data.choices[0].message.content });
+      }
+      lastError = data.error?.message || lastError;
+    }
+
+    return NextResponse.json(
+      { error: `${lastError} (Model dicek: ${chatCandidates.join(', ')})` },
+      { status: 500 }
+    );
   } catch (err) {
     return NextResponse.json(
       { error: 'Terjadi kesalahan koneksi server.' },
