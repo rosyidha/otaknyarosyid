@@ -8,6 +8,12 @@ const PROMPTS = {
   idea: 'Berikan ide-ide kreatif dan langkah eksekusinya.',
 };
 
+const MODELS = [
+  'gemini-3.8-flash-lite',
+  'gemini-2.5-flash-lite',
+  'gemini-3.8-flash',
+];
+
 export async function POST(req) {
   try {
     const apiKey = process.env.GEMINI_API_KEY;
@@ -24,32 +30,35 @@ export async function POST(req) {
     }
 
     const systemInstruction = PROMPTS[mode] || PROMPTS.chat;
+    let lastError = 'Server AI sedang sibuk, silakan coba sesaat lagi.';
 
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${apiKey}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [
-            {
-              parts: [{ text: `${systemInstruction}\n\nPermintaan pengguna:\n${prompt}` }],
-            },
-          ],
-        }),
-      }
-    );
-
-    const data = await response.json();
-    if (!response.ok) {
-      return NextResponse.json(
-        { error: data.error?.message || 'Gagal memproses AI.' },
-        { status: 500 }
+    for (const model of MODELS) {
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [
+              {
+                parts: [{ text: `${systemInstruction}\n\nPermintaan pengguna:\n${prompt}` }],
+              },
+            ],
+          }),
+        }
       );
+
+      const data = await response.json();
+
+      if (response.ok) {
+        const result = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+        return NextResponse.json({ result });
+      }
+
+      lastError = data.error?.message || lastError;
     }
 
-    const result = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
-    return NextResponse.json({ result });
+    return NextResponse.json({ error: lastError }, { status: 503 });
   } catch (err) {
     return NextResponse.json(
       { error: 'Terjadi kesalahan koneksi server.' },
