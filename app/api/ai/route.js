@@ -1,5 +1,4 @@
 import { NextResponse } from 'next/server';
-import OpenAI from 'openai';
 
 const PROMPTS = {
   chat: 'Kamu adalah OTAKnyaROSYID, asisten AI cerdas berbahasa Indonesia.',
@@ -11,35 +10,49 @@ const PROMPTS = {
 
 export async function POST(req) {
   try {
-    const apiKey = process.env.OPENAI_API_KEY;
+    const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
       return NextResponse.json(
-        { error: 'OPENAI_API_KEY belum dipasang di pengaturan Vercel.' },
+        { error: 'GEMINI_API_KEY belum dipasang di Vercel.' },
         { status: 500 }
       );
     }
 
-    const openai = new OpenAI({ apiKey });
     const { prompt, mode = 'chat' } = await req.json();
-
     if (!prompt) {
       return NextResponse.json({ error: 'Teks kosong.' }, { status: 400 });
     }
 
-    const completion = await openai.chat.completions.create({
-      model: 'gpt-4o-mini',
-      messages: [
-        { role: 'system', content: PROMPTS[mode] || PROMPTS.chat },
-        { role: 'user', content: prompt },
-      ],
-    });
+    const systemInstruction = PROMPTS[mode] || PROMPTS.chat;
 
-    return NextResponse.json({
-      result: completion.choices[0]?.message?.content || '',
-    });
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [
+            {
+              parts: [{ text: `${systemInstruction}\n\nPermintaan pengguna:\n${prompt}` }],
+            },
+          ],
+        }),
+      }
+    );
+
+    const data = await response.json();
+    if (!response.ok) {
+      return NextResponse.json(
+        { error: data.error?.message || 'Gagal memproses AI.' },
+        { status: 500 }
+      );
+    }
+
+    const result = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    return NextResponse.json({ result });
   } catch (err) {
     return NextResponse.json(
-      { error: 'Gagal terhubung ke OpenAI. Periksa API Key atau saldo akun OpenAI.' },
+      { error: 'Terjadi kesalahan koneksi server.' },
       { status: 500 }
     );
   }
