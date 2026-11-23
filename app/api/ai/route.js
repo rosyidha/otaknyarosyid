@@ -8,18 +8,12 @@ const PROMPTS = {
   idea: 'Berikan ide-ide kreatif dan langkah eksekusinya.',
 };
 
-const MODELS = [
-  'gemini-3.8-flash-lite',
-  'gemini-2.5-flash-lite',
-  'gemini-3.8-flash',
-];
-
 export async function POST(req) {
   try {
-    const apiKey = process.env.GEMINI_API_KEY;
+    const apiKey = process.env.GROQ_API_KEY;
     if (!apiKey) {
       return NextResponse.json(
-        { error: 'GEMINI_API_KEY belum dipasang di Vercel.' },
+        { error: 'GROQ_API_KEY belum dipasang di Vercel.' },
         { status: 500 }
       );
     }
@@ -29,36 +23,33 @@ export async function POST(req) {
       return NextResponse.json({ error: 'Teks kosong.' }, { status: 400 });
     }
 
-    const systemInstruction = PROMPTS[mode] || PROMPTS.chat;
-    let lastError = 'Server AI sedang sibuk, silakan coba sesaat lagi.';
+    const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: 'llama-3.3-70b-versatile',
+        messages: [
+          { role: 'system', content: PROMPTS[mode] || PROMPTS.chat },
+          { role: 'user', content: prompt },
+        ],
+        temperature: 0.7,
+      }),
+    });
 
-    for (const model of MODELS) {
-      const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [
-              {
-                parts: [{ text: `${systemInstruction}\n\nPermintaan pengguna:\n${prompt}` }],
-              },
-            ],
-          }),
-        }
+    const data = await response.json();
+
+    if (!response.ok) {
+      return NextResponse.json(
+        { error: data.error?.message || 'Gagal memproses AI.' },
+        { status: 500 }
       );
-
-      const data = await response.json();
-
-      if (response.ok) {
-        const result = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
-        return NextResponse.json({ result });
-      }
-
-      lastError = data.error?.message || lastError;
     }
 
-    return NextResponse.json({ error: lastError }, { status: 503 });
+    const result = data.choices?.[0]?.message?.content || '';
+    return NextResponse.json({ result });
   } catch (err) {
     return NextResponse.json(
       { error: 'Terjadi kesalahan koneksi server.' },
