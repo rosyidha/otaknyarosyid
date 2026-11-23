@@ -23,7 +23,6 @@ export async function POST(req) {
       return NextResponse.json({ error: 'Teks kosong.' }, { status: 400 });
     }
 
-    // Ambil semua model yang tersedia di akun Groq Anda
     const modelsRes = await fetch('https://api.groq.com/openai/v1/models', {
       headers: { Authorization: `Bearer ${apiKey}` },
     });
@@ -52,7 +51,6 @@ export async function POST(req) {
       );
     }
 
-    // Coba setiap model yang tersedia di akun Anda sampai berhasil
     let lastError = 'Gagal memproses AI.';
     for (const modelId of chatCandidates) {
       const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
