@@ -23,6 +23,25 @@ export async function POST(req) {
       return NextResponse.json({ error: 'Teks kosong.' }, { status: 400 });
     }
 
+    const modelsRes = await fetch('https://api.groq.com/openai/v1/models', {
+      headers: { Authorization: `Bearer ${apiKey}` },
+    });
+    const modelsData = await modelsRes.json();
+    const availableIds = (modelsData.data || []).map((m) => m.id);
+
+    const textModels = availableIds.filter(
+      (id) =>
+        !id.includes('whisper') &&
+        !id.includes('guard') &&
+        !id.includes('tts')
+    );
+
+    const chosenModel =
+      textModels.find((id) => id.includes('70b')) ||
+      textModels.find((id) => id.includes('llama')) ||
+      textModels[0] ||
+      'llama-3.1-8b-instant';
+
     const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -30,7 +49,7 @@ export async function POST(req) {
         Authorization: `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        model: 'llama-3.3-70b-versatile',
+        model: chosenModel,
         messages: [
           { role: 'system', content: PROMPTS[mode] || PROMPTS.chat },
           { role: 'user', content: prompt },
